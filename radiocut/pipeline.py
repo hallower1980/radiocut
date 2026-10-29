@@ -7,7 +7,7 @@ from . import llm as L
 
 DEFAULTS = {"whisper_model": "base.en", "window": 30.0, "threshold": 0.5,
             "min_break": 20.0, "min_keep": 60.0, "use_llm": False,
-            "llm_base": L.PRESETS["LM Studio"], "llm_model": "", "llm_weight": 0.6}
+            "llm_base": L.PRESETS["LM Studio"], "llm_model": "", "llm_weight": 0.65}
 
 
 def analyze(path, cfg=None, progress=None, log=print):
@@ -32,7 +32,8 @@ def analyze(path, cfg=None, progress=None, log=print):
                                           wins[i - 1]["text"] if i else "", w["text"],
                                           wins[i + 1]["text"] if i + 1 < len(wins) else "")
                 lp = conf if lab != "CONTENT" else (1 - conf) * 0.3
-                p = cfg["llm_weight"] * lp + (1 - cfg["llm_weight"]) * hs
+                # heuristics alone can still flag (e.g. a replayed news brief); the LLM adds/boosts
+                p = max(hs, cfg["llm_weight"] * lp + (1 - cfg["llm_weight"]) * hs)
                 why = f"LLM: {lab} ({r})" + (f"; {why}" if why else "")
             except Exception as e:  # server down: fall back to heuristics
                 log(f"LLM error at {fmt_ts(w['start'])}: {e}")
@@ -49,7 +50,7 @@ def to_segments(wins, tr, cfg):
     th = cfg["threshold"]
     # 3-window median smoothing
     p = [w["p"] for w in wins]
-    sm = [sorted(p[max(0, i - 1):i + 2])[len(p[max(0, i - 1):i + 2]) // 2] if 0 < i < len(p) - 1 else p[i]
+    sm = [sorted(p[i - 1:i + 2])[1] if 0 < i < len(p) - 1 else min(p[max(0, i - 1):i + 2])
           for i in range(len(p))]
     flag = [x >= th for x in sm]
     runs = []

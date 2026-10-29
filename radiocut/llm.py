@@ -13,7 +13,7 @@ SYSTEM = (
     "interviews, the show's topic, prayers/readings that are part of the program); "
     "AD = paid commercial/sponsor read/fundraising pitch; PROMO = network or station "
     "self-promotion, promos for other shows/events/apps, station ID, bumper, "
-    "'stay with us/coming up' teases, news/traffic/weather inserts; "
+    "'stay with us/coming up' teases, network news briefs/newscasts and traffic/weather inserts that are not the show's own discussion; "
     "MUSIC = music/jingle/silence with no talk. Host-read sponsor messages are AD. "
     "Answer with JSON only: {\"label\": \"CONTENT|AD|PROMO|MUSIC\", \"confidence\": 0-1, \"reason\": \"<8 words\"}"
 )
@@ -25,9 +25,10 @@ def list_models(base):
 
 
 def classify(base, model, prev_text, text, next_text, timeout=180):
-    user = (f"Previous chunk (context): {prev_text[-400:]}\n\n"
-            f"CHUNK TO LABEL: {text or '[no speech]'}\n\n"
-            f"Next chunk (context): {next_text[:400]}")
+    user = (f"[context only - do NOT label] ...{prev_text[-200:]}\n\n"
+            f"=== CHUNK TO LABEL ===\n{text or '[no speech]'}\n=== END CHUNK ===\n\n"
+            f"[context only - do NOT label] {next_text[:200]}...\n\n"
+            "Label ONLY the text between the === markers.")
     body = {"model": model, "temperature": 0, "max_tokens": 60,
             "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]}
     req = urllib.request.Request(base.rstrip("/") + "/chat/completions",
