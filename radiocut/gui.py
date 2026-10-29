@@ -26,6 +26,7 @@ class App:
         self.engine = tk.StringVar(value=s["llm_engine"])
         self.url = tk.StringVar(value=s["llm_base"]); self.lm = tk.StringVar(value=s["llm_model"])
         self.th = tk.DoubleVar(value=s["threshold"]); self.split = tk.BooleanVar(value=False)
+        self.hf = tk.BooleanVar(value=s.get("host_focus", True)); self.hmin = tk.DoubleVar(value=s.get("host_minutes", 5.0))
         self.still = tk.StringVar()
         f = ttk.Frame(root, padding=8); f.pack(fill="x")
         self.drop = tk.Label(f, text="Drop a recording here (mp4, mp3, wav, m4a...) or click to browse",
@@ -51,6 +52,9 @@ class App:
         ttk.Scale(g, variable=self.th, from_=0.3, to=0.8).grid(row=1, column=2, columnspan=2, sticky="we")
         ttk.Checkbutton(g, text="Also export one clip per kept segment", variable=self.split).grid(row=1, column=4, columnspan=2, sticky="w")
         ttk.Button(g, text="Still image (audio-only)...", command=self.pick_still).grid(row=1, column=6)
+        ttk.Checkbutton(g, text="Host focus: keep only the host + people they talk with", variable=self.hf).grid(row=2, column=0, columnspan=4, sticky="w")
+        ttk.Label(g, text="Learn host voice from first (min)").grid(row=2, column=4, sticky="e")
+        ttk.Spinbox(g, textvariable=self.hmin, from_=1, to=30, increment=1, width=5).grid(row=2, column=5, sticky="w")
         b = ttk.Frame(root, padding=8); b.pack(fill="x")
         self.pbtn = ttk.Button(b, text="1. Process", command=self.process); self.pbtn.pack(side="left")
         self.ebtn = ttk.Button(b, text="2. Export video + cut list", command=self.export, state="disabled"); self.ebtn.pack(side="left", padx=6)
@@ -96,7 +100,8 @@ class App:
     def cfg(self):
         c = {"whisper_model": self.wm.get(), "threshold": round(self.th.get(), 2),
              "use_llm": not self.engine.get().startswith("None"), "llm_base": self.url.get(), "llm_model": self.lm.get(),
-             "llm_engine": self.engine.get()}
+             "llm_engine": self.engine.get(),
+             "host_focus": bool(self.hf.get()), "host_minutes": float(self.hmin.get())}
         json.dump(c, open(SETTINGS, "w")); return c
 
     def process(self):

@@ -4,10 +4,12 @@ from .util import load_audio, fmt_ts
 from .transcribe import transcribe
 from . import heuristics as H
 from . import llm as L
+from . import speakers as SP
 
 DEFAULTS = {"whisper_model": "base.en", "window": 30.0, "threshold": 0.5,
             "min_break": 20.0, "min_keep": 60.0, "use_llm": False,
-            "llm_base": L.PRESETS["LM Studio"], "llm_model": "", "llm_weight": 0.65}
+            "llm_base": L.PRESETS["LM Studio"], "llm_model": "", "llm_weight": 0.65,
+            "host_focus": True, "host_minutes": 5.0}
 
 
 def analyze(path, cfg=None, progress=None, log=print):
@@ -21,6 +23,10 @@ def analyze(path, cfg=None, progress=None, log=print):
     prog(0.56, "Matching recurring ads/jingles")
     trep = H.transcript_repeats(wins)
     arep = H.audio_repeats(audio, 16000, wins)
+    hf = None
+    if cfg["host_focus"]:
+        prog(0.57, "Identifying the host voice")
+        hf = SP.host_focus(tr, audio, cfg, progress=lambda p, m: prog(0.57 + 0.03 * p, m), log=log)
     del audio
     heur = H.heuristic_scores(wins, trep, arep)
     probs, labels, reasons = [], [], []
@@ -40,7 +46,7 @@ def analyze(path, cfg=None, progress=None, log=print):
         probs.append(p); labels.append(lab); reasons.append(why)
         prog(0.6 + 0.38 * (i + 1) / len(wins), f"Classifying {i+1}/{len(wins)}")
         w.update(p=round(p, 3), label=lab, reason=why, trep=round(trep[i], 2), arep=round(arep[i], 2))
-    segs = to_segments(wins, tr, cfg)
+    segs = host_segments(hf, wins, tr, cfg) if hf else to_segments(wins, tr, cfg)
     prog(1.0, "Done")
     return {"source": path, "duration": tr["duration"], "windows": wins, "segments": segs,
             "transcript": tr["segments"], "config": cfg}
@@ -95,6 +101,46 @@ def to_segments(wins, tr, cfg):
     for x, y in zip(segs, segs[1:]):
         t = snap(x["end"]); x["end"] = y["start"] = round(t, 2)
     return segs
+
+
+def host_segments(hf, wins, tr, cfg):
+    """Host-focus mode: keep/cut per transcript segment (speaker turns), boundaries in the
+    pauses between Whisper segments so the host is never cut mid-sentence."""
+    # optional: an LLM-confirmed ad/promo read by the host is still cut
+    if cfg["use_llm"] and cfg["llm_model"]:
+        for w in wins:
+            if w["label"] in ("AD", "PROMO", "MUSIC") and w["p"] >= max(cfg["threshold"], 0.7):
+                for s in hf:
+                    mid = (s["start"] + s["end"]) / 2
+                    if w["start"] <= mid < w["end"] and s["keep"]:
+                        s["keep"], s["role"], s["llm"] = False, "HOST AD", w["reason"]
+    runs = []
+    for s in hf:
+        if runs and runs[-1]["keep"] == s["keep"]:
+            runs[-1]["items"].append(s)
+        else:
+            runs.append({"keep": s["keep"], "items": [s]})
+    out = []
+    for k, r in enumerate(runs):
+        it = r["items"]
+        a = 0.0 if k == 0 else round((runs[k - 1]["items"][-1]["end"] + it[0]["start"]) / 2, 2)
+        b = tr["duration"] if k == len(runs) - 1 else round((it[-1]["end"] + runs[k + 1]["items"][0]["start"]) / 2, 2)
+        roles = [x["role"] for x in it]
+        if r["keep"]:
+            lab = "HOST+GUEST" if any(x == "GUEST" for x in roles) else "HOST"
+            why = ""
+        else:
+            lab = "HOST AD" if "HOST AD" in roles else "OTHER VOICE"
+            spk = sorted({x.get("speaker", "") for x in it if x.get("speaker")})
+            sim = max(x["hostsim"] for x in it)
+            exm = max([x.get("exchanges", 0) for x in it] or [0])
+            why = (f"not the host (max host similarity {sim:.2f}); voices {', '.join(spk)[:60]}; "
+                   f"{exm} turn exchanges with host nearby")
+            ll = [x["llm"] for x in it if x.get("llm")]
+            if ll: why = ll[0]
+        out.append({"start": a, "end": b, "keep": r["keep"], "label": lab, "reason": why,
+                    "preview": " ".join(x["text"] for x in it[:3])[:200]})
+    return out
 
 
 def save_project(res, path):

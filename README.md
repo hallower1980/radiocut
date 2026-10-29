@@ -33,6 +33,8 @@ ffmpeg is bundled — nothing else to install.
 
 The first time you process a file, the chosen speech model (75 MB for `base.en`, 480 MB for
 `small.en`) is downloaded once into `~/.radiocut/models`. After that RadioCut works with no internet.
+With **Host focus** on (the default) a 29 MB speaker-recognition model (WeSpeaker CAM++,
+run with ONNX Runtime) is also downloaded once into the same folder.
 For a fully air-gapped machine, copy that `models` folder from a computer that has run it once.
 
 ## Using it
@@ -68,6 +70,28 @@ and choose **Local AI → Ollama** (port 11434). Any other OpenAI-compatible loc
 
 ## How detection works
 
+### Host focus (default, new in v0.1.2)
+
+RadioCut learns the host's voice from the **first 5 minutes** (change it in the GUI or with
+`--host-minutes`), then keeps only:
+
+* the **host**, and
+* **guests and callers the host talks with directly** – voices that trade turns back and forth with
+  the host (several exchanges within ~25 s gaps, inside a ±4-minute neighbourhood).
+
+Everything else is cut: news briefs, other shows' hosts, pre-recorded features ("Saint of the Day",
+recorded reflections, segments hosted by someone else), ads, promos, station IDs and music.
+A voice that is only handed to and taken back from once (e.g. "over to you, Bailey ... thanks,
+Bailey") counts as a separate segment, not a conversation, and is cut.
+Cuts fall in the pauses between sentences (Whisper segment boundaries) with short fades,
+so the host is not cut mid-sentence. Each cut in the review list says why (host similarity,
+voice cluster, number of turn exchanges). Turn it off (`--no-host-focus`) for the v0.1.1 behaviour,
+which removes only ads and breaks and keeps every voice.
+
+If a local LLM is enabled in host-focus mode, host-read ads it is confident about (≥0.7) are cut too.
+
+### Ad / break detection (used when host focus is off, and for the host-read-ad check)
+
 The recording is cut into 30-second windows and each gets a "break" score from:
 
 * **Cue phrases** – "brought to you by", promo codes, phone numbers, web addresses, "call now",
@@ -82,6 +106,12 @@ Scores are smoothed, very short runs are merged (breaks < 20 s and kept parts < 
 and cut points are snapped to pauses in speech. Everything is a suggestion – review before exporting.
 
 ## Limitations
+
+* Host focus assumes the host is the main voice in the opening minutes. If the recording starts
+  with a long pre-roll, news or another show, raise/lower `--host-minutes` or trim the start first.
+* A pre-recorded segment voiced by the host himself is kept (same voice). A co-host is detected
+  only if they speak at least ~30% of the opening minutes.
+* Telephone-quality callers are recognised by turn-taking only; there is no separate phone-line detector yet.
 
 * 30-second resolution: a cut can include a few seconds of a neighbouring segment.
 * Host-read ads blended into conversation, and promos for the show itself, are the hardest cases;

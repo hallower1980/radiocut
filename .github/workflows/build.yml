@@ -44,6 +44,7 @@ jobs:
           python -c "import imageio_ffmpeg,subprocess;subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(),'-y','-f','lavfi','-i','sine=f=440:d=20','t.wav'],check=True)"
           if [ "$RUNNER_OS" = "Windows" ]; then EXE=dist/RadioCut/RadioCut.exe; else EXE=dist/RadioCut.app/Contents/MacOS/RadioCut; fi
           RADIOCUT_HOME=$PWD/rchome "$EXE" t.wav --whisper tiny.en -o t-out.mp4 && ls -la t-out*
+          RADIOCUT_HOME=$PWD/rchome "$EXE" --selftest-speaker
       - name: Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
