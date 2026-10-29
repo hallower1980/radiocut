@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.mp4
+*.mp3
+*.wav
+*.transcript.json
+*.project.json
+.venv/
+venv/

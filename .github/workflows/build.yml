@@ -1,0 +1,75 @@
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install numpy pytest imageio-ffmpeg && pytest -q
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-latest, name: Windows-x64}
+          - {os: macos-latest, name: macOS-AppleSilicon}
+          - {os: macos-15-intel, name: macOS-Intel}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install deps
+        run: pip install -r requirements.txt pyinstaller
+      - name: PyInstaller
+        shell: bash
+        run: >
+          pyinstaller --noconfirm --windowed --name RadioCut
+          --collect-all faster_whisper --collect-all ctranslate2 --collect-all onnxruntime
+          --collect-all imageio_ffmpeg --collect-all tkinterdnd2 --collect-submodules radiocut
+          --osx-bundle-identifier io.github.hallower1980.radiocut
+          run_radiocut.py
+      - name: Smoke test (CLI analyze on a synthetic tone)
+        shell: bash
+        run: |
+          python -c "import imageio_ffmpeg,subprocess;subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(),'-y','-f','lavfi','-i','sine=f=440:d=20','t.wav'],check=True)"
+          if [ "$RUNNER_OS" = "Windows" ]; then EXE=dist/RadioCut/RadioCut.exe; else EXE=dist/RadioCut.app/Contents/MacOS/RadioCut; fi
+          RADIOCUT_HOME=$PWD/rchome "$EXE" t.wav --whisper tiny.en -o t-out.mp4 && ls -la t-out*
+      - name: Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $env:RC_VERSION = "${{ github.ref_name }}"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\radiocut.iss
+          Compress-Archive -Path dist\RadioCut -DestinationPath dist\RadioCut-Windows-x64-portable.zip
+      - name: macOS dmg
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep -s - dist/RadioCut.app || true
+          mkdir dmg && cp -R dist/RadioCut.app dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname RadioCut -srcfolder dmg -ov -format UDZO dist/RadioCut-${{ matrix.name }}.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RadioCut-${{ matrix.name }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.dmg
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.dmg

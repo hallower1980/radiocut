@@ -1,0 +1,4 @@
+faster-whisper>=1.1
+numpy
+imageio-ffmpeg>=0.5
+tkinterdnd2>=0.4
