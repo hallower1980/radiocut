@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - run: pip install numpy pytest imageio-ffmpeg && pytest -q
+      - run: pip install numpy pytest imageio-ffmpeg && python -m pytest -q
   build:
     needs: test
     strategy:
